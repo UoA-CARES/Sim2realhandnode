@@ -1,0 +1,38 @@
+# RealSense D435 settings shared by the cube pose node and the VLM node.
+# Changing anything here changes the images BOTH nodes see: agree changes with the teammate first.
+#
+# Loaded by launch/camera.launch.py. Parameter names are the driver's own
+# (check a running driver with: ros2 param dump /camera/camera).
+/camera/camera:
+  ros__parameters:
+    serial_no: "826212070191"   # this D435 (overridable: serial_no:=... on the launch command)
+
+    # Colour only. Depth and IR are off: nothing uses them, and they cost USB bandwidth.
+    enable_color: true
+    enable_depth: false
+    enable_infra1: false
+    enable_infra2: false
+    enable_gyro: false
+    enable_accel: false
+
+    rgb_camera:
+      # camera_intrinsics.npz is calibrated at 1280x720 only. Do not change the resolution
+      # without recalibrating. The VLM node resizes its own copy if it wants smaller frames.
+      color_profile: 1280x720x30
+      color_format: RGB8
+
+      # Exposure: auto, but never allowed to lower the frame rate in dim light
+      # (auto_exposure_priority: true dropped us to ~25 Hz).
+      enable_auto_exposure: true
+      auto_exposure_priority: false
+      # For a fixed exposure instead (steadier, less blur on a moving cube), set
+      # enable_auto_exposure: false and tune these together with the teammate:
+      # exposure: 166      # units of 0.1 ms; must stay under 333 for 30 fps
+      # gain: 64
+
+      # White balance: auto. STag works on greyscale so this mainly matters to the VLM.
+      # To fix it: enable_auto_white_balance: false, white_balance: 4600.0
+      enable_auto_white_balance: true
+
+      # Mains frequency, against flicker from room lights: 0 off, 1 = 50 Hz, 2 = 60 Hz, 3 = auto.
+      power_line_frequency: 1   # 50 Hz (NZ)
