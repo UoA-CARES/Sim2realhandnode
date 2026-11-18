@@ -1,1 +1,7 @@
 .vscode
+
+# ROS package build artifacts
+/build/
+/install/
+/log/
+
