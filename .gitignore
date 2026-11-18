@@ -1,7 +1,44 @@
-.vscode
+# ROS 2 / Colcon workspace directories
+build/
+install/
+log/
+COLCON_IGNORE
 
-# ROS package build artifacts
-/build/
-/install/
-/log/
+# C++ / CMake build artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.o
+*.a
+*.so
+*.exe
+compile_commands.json
 
+# Python build & cache artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+*.egg
+.pytest_cache/
+.coverage
+
+# ROS 2 runtime & debugging logs
+*.bag
+*.db3
+*.mcap
+.ros/
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
