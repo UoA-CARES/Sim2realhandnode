@@ -11,7 +11,7 @@ RealSense D435 ──► camera driver ──► /camera/camera/color/image_raw 
 | Part | Status |
 |---|---|
 | **Camera node**: Intel's `realsense2_camera` driver, started with shared settings | ✅ working (`camera.launch.py`) |
-| **Cube pose node**: STag markers → cube pose + velocity in `hand_root` | 🚧 not written yet |
+| **Cube pose node**: STag markers → cube pose in `hand_root` (twist NaN) | ✅ written, tested on saved frames (`perception.launch.py`) |
 
 ## Repository layout
 

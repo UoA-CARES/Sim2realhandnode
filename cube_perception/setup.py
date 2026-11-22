@@ -21,6 +21,8 @@ setup(
     description='Camera launch and cube pose node for the robot hand (sim2real).',
     license='TODO',
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'cube_pose_node = cube_perception.cube_pose_node:main',
+        ],
     },
 )
