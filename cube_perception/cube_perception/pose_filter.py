@@ -1,6 +1,6 @@
 """Gap handling, outlier rejection and optional smoothing of the cube pose. No ROS.
 
-The OpenAI policy doesn't use cube velocity, so this only cleans up the pose:
+This only cleans up the pose (no velocity):
   - a measurement that jumps too far from the last good pose in one step is ignored (outlier),
     unless `reset_after` of them in a row agree with each other (the cube really moved);
   - while the cube is hidden, the last pose is held for up to `max_hold_s` (status "predicting"),

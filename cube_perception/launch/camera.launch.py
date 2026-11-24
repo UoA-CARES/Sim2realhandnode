@@ -3,7 +3,7 @@
     ros2 launch cube_perception camera.launch.py
     ros2 launch cube_perception camera.launch.py serial_no:=123456789012   # a different D435
 
-Publishes /camera/camera/color/image_raw (1280x720, ~30 Hz) and /camera/camera/color/camera_info.
+Publishes /camera/camera/color/image_raw (960x540, ~60 Hz), aligned depth and /camera/camera/color/camera_info.
 
 The driver node is started directly instead of through realsense2_camera's rs_launch.py,
 because rs_launch.py silently drops any setting not in its own argument list

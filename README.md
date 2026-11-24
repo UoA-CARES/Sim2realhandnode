@@ -1,201 +1,170 @@
-# Sim2realhandnode
+# Introduction and Feature List
 
-ROS 2 Jazzy nodes for Eureka sim2real: nodes that bring the real cube's state into the robot hand's control stack, so a policy trained in
-Isaac Lab (`ard-isaaclab-tasks`) can run on the real MASA hand.
+This is a computer vision node for ROS 2 Jazzy. It finds the position and orientation of chosen objects, at high speed.
 
-```
-RealSense D435 ──► camera driver ──► /camera/camera/color/image_raw ──┬──► cube pose node ──► /robot_hand/object/states ──► policy_runner
-(realsense2_camera, Intel's)                                          └──► VLM node =
-```
+- **Fast.** The target is 60 Hz, the limit of the camera. Measured: 55 to 58 Hz, about 34 ms from image to pose.
+- **Fixed world frame (`hand_root`).** The centre of the forearm tag is (0, 0, 0). The upper surface of the dexterous hand stays horizontal. The fingertips point to the +y axis.
+  - World frame: the axes that all poses are given in. Origin: forearm tag (ID 10). x: to the little finger. y: to the fingertips. z: out of the tag surface.
+- **Tracking by tags.** Objects are tracked with printed markers. STag is the type supported now.
+- **Many objects.** One object is a set of tags. See [How an object is described](#how-an-object-is-described).
 
-| Part | Status |
-|---|---|
-| **Camera node**: Intel's `realsense2_camera` driver, started with shared settings | ✅ working (`camera.launch.py`) |
-| **Cube pose node**: STag markers → cube pose in `hand_root` (twist NaN) | ✅ written, tested on saved frames (`perception.launch.py`) |
+# Structure
 
-## Repository layout
+## File structure
 
 ```
-cube_perception/                 ament_python package
-├── package.xml
-├── setup.py, setup.cfg
-├── config/
-│   ├── camera.yaml              shared camera settings (resolution, exposure, white balance, ...)
-│   ├── camera_intrinsics.npz    camera calibration, valid at 1280x720 only
-│   └── cube_faces.json          learned marker rotations on each cube face
+cube_perception/                ROS package
 ├── launch/
-│   └── camera.launch.py         starts the D435 with camera.yaml
-└── cube_perception/             Python code (cube pose node goes here)
+│   ├── camera.launch.py        camera only
+│   └── perception.launch.py    camera + cube pose node
+├── config/
+│   ├── camera.yaml             camera settings
+│   ├── camera_intrinsics.npz   calibration of camera 826212070191, at 1280x720
+│   ├── perception.yaml         node settings, and the list of objects
+│   └── cube_faces.json         cube, 6 tags
+├── cube_perception/
+│   ├── image_utils.py          ROS image -> numpy image
+│   ├── tracker_core.py         image -> tag corners -> pose of an object
+│   ├── pose_filter.py          removes jumps, holds the pose while an object is hidden
+│   └── cube_pose_node.py       ROS node: joins the files above
+└── tools/                      save_frames, measure_cube, learn_faces, compare_with_cube_tracker
 ```
 
-## Requirements
+## How it works
 
-- Ubuntu 24.04
-- ROS 2 **Jazzy**
-- Intel RealSense **D435** on a **USB 3** port (serial `826212070191`)
-- Python 3.12 (the system Python ROS uses), **not** a conda environment
-
-## Setup (once)
-
-### 1. Keep conda out of ROS terminals
-
-ROS Jazzy is built for the system Python 3.12. Conda's Python (e.g. the Isaac Lab env, Python 3.11)
-cannot import `rclpy` and makes `colcon` build with the wrong interpreter.
-
-```bash
-conda config --set auto_activate_base false
+```
+Intel camera driver ──► tag detector ──► object pose ──► filter ──► ROS topics
+                        └──────────── cube_pose_node ───────────┘
 ```
 
-Activate `env_isaaclab` only in terminals where you train. Never in ROS terminals.
+## How an object is described
 
-### 2. Install ROS 2 Jazzy and the RealSense driver
+Each object has one file. The file lists the tags on the object. Each tag has an ID and its pose on the object. All tags of one object have the same size.
 
-Follow <https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html> (`ros-jazzy-desktop` + `ros-dev-tools`), then:
-
-```bash
-sudo apt install ros-jazzy-realsense2-camera ros-jazzy-rqt-image-view
+```
+config/cube_faces.json (one tag shown, shortened)
+{
+  "marker_mm": 40.0,
+  "faces": {
+    "6": {
+      "R_cube_marker": [[0.000585, 1.0, 0.0], [-1.0, 0.000585, 0.0], [0.0, 0.0, 1.0]],
+      "t_cube_marker_mm": [0.043, 0.145, 25.0]
+    }
+  }
+}
 ```
 
-### 3. Python packages
+`R_cube_marker` is the tag rotation (3x3 matrix). `t_cube_marker_mm` is the tag centre. Both are relative to the object centre.
 
-numpy, scipy and OpenCV come from apt, so they match the versions ROS is built against (NumPy 1.x):
+To add an object:
 
-```bash
-sudo apt install python3-numpy python3-scipy python3-opencv
-```
+1. Write `config/<name>_faces.json`. One tag ID can belong to one object only.
+2. Add the name to `objects:` in `config/perception.yaml`.
+3. Build again.
 
-`stag-python` is not in apt, so it goes in a venv that can also see the ROS packages:
+`tools/learn_faces.py` corrects small errors in how the tags were glued on. It works for the cube only.
 
-```bash
-python3 -m venv --system-site-packages ~/ros2_venv
-```
+## Input and output
 
-```bash
-~/ros2_venv/bin/pip install stag-python "numpy<2"
-```
+**Input:** none from other nodes. The launch file starts the camera, and `cube_pose_node` reads `/camera/camera/color/image_raw`.
 
-Keep `numpy<2`: ROS Jazzy's Python packages are built against NumPy 1.x.
+**Publishes:**
 
-### 4. Workspace
+| Topic | Type | Content |
+|---|---|---|
+| `/object_tracker/poses` | `vision_msgs/Detection3DArray` | Object list. Frame `hand_root`, metres, sent for every image. |
+| `/object_tracker/status` | `std_msgs/String` | `<object>: tracking`, `predicting`, `lost` or `no_hand_marker` |
+| `/camera/camera/color/image_raw` | `sensor_msgs/Image` | Colour image (RGB), 960x540 |
+| `/camera/camera/color/camera_info` | `sensor_msgs/CameraInfo` | Factory calibration. The tracker uses `camera_intrinsics.npz` instead. |
+| `/camera/camera/aligned_depth_to_color/image_raw` | `sensor_msgs/Image` | Depth image (D), matched to the colour pixels |
+| `/object_tracker/debug_image` | `sensor_msgs/Image` | Image with axes drawn. Off by default. |
+| `/tf` | `tf2_msgs/TFMessage` | `camera_color_optical_frame -> hand_root -> <object>` |
 
-The package lives in this repo and is linked into a colcon workspace:
+How to read the object list:
 
-```bash
-mkdir -p ~/ros2_ws/src
-```
+| Field | Meaning |
+|---|---|
+| `detections[i].id` | Object name, for example `cube` |
+| `detections[i].results[0].pose.pose` | Pose |
+| `detections[i].results[0].hypothesis.score` | 1.0: seen in this image. 0.5: not seen now, last pose held for a short time. |
 
-```bash
-ln -s ~/Documents/GitHub/Sim2realhandnode/cube_perception ~/ros2_ws/src/cube_perception
-```
+A lost object is not in the list. If the forearm tag was never seen, the list is empty.
 
-## Build
+# Installation
 
-```bash
-source /opt/ros/jazzy/setup.bash
-```
+You need:
 
-```bash
-cd ~/ros2_ws && colcon build --symlink-install --packages-select cube_perception
-```
+- Ubuntu 24.04 and [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html)
+- The system Python 3.12, **not** conda
+- Intel RealSense D435 on a **USB 3** port
 
-With `--symlink-install`, edits to existing files (e.g. `camera.yaml`) take effect on the next launch without
-rebuilding. Rebuild after **adding** files.
+1. Keep conda out of ROS terminals. ROS cannot use the conda Python.
 
-## Every new terminal
+   ```bash
+   conda config --set auto_activate_base false
+   ```
+
+2. Install the system packages. Also install `librealsense2-udev-rules` from the RealSense apt repository. It lets a normal user open the camera.
+
+   ```bash
+   sudo apt install ros-jazzy-realsense2-camera ros-jazzy-vision-msgs python3-numpy python3-scipy python3-opencv
+   ```
+
+3. Install the Python packages that apt does not have. Keep `numpy<2`, because ROS Jazzy is built with NumPy 1.
+
+   ```bash
+   /usr/bin/python3 -m venv --system-site-packages ~/ros2_venv
+   ~/ros2_venv/bin/pip install stag-python "numpy<2"
+   ```
+
+4. Build. Start in the folder of this repo.
+
+   ```bash
+   mkdir -p ~/ros2_ws/src && ln -s "$PWD/cube_perception" ~/ros2_ws/src/
+   source /opt/ros/jazzy/setup.bash
+   cd ~/ros2_ws && colcon build --symlink-install --packages-select cube_perception
+   ```
+
+# How to use it
+
+Run this in every new terminal:
 
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && source ~/ros2_venv/bin/activate
 ```
 
-(Add it to `~/.bashrc` to skip this.)
-
-## Run the camera
-
-```bash
-ros2 launch cube_perception camera.launch.py
-```
-
-For a different D435:
-
-```bash
-ros2 launch cube_perception camera.launch.py serial_no:=123456789012
-```
-
-Publishes:
-
-| Topic | Type | |
-|---|---|---|
-| `/camera/camera/color/image_raw` | `sensor_msgs/Image` | 1280×720 RGB8, ~30 Hz |
-| `/camera/camera/color/camera_info` | `sensor_msgs/CameraInfo` | factory intrinsics (use `camera_intrinsics.npz` instead) |
-
-Only one program can open the camera at a time. While the driver runs, `cube_tracker.py` and
-`validate_stag.py` cannot open it. Stop the driver (Ctrl+C) to use them.
-
-### Check it
-
-Rate (should settle at about 29–30 Hz, with `max` around 0.033–0.045 s):
-
-```bash
-ros2 topic hz /camera/camera/color/image_raw
-```
-
-Settings actually applied:
-
-```bash
-ros2 param dump /camera/camera
-```
-
-View the images (pick `/camera/camera/color/image_raw` in the dropdown; press refresh if it is empty):
-
-```bash
-ros2 run rqt_image_view rqt_image_view
-```
-
-## Camera settings
-
-All settings are in [`cube_perception/config/camera.yaml`](cube_perception/config/camera.yaml).
-**The cube pose node and the VLM node share the same images. Agree any change with the teammate first.**
-
-| Setting | Value | Why |
-|---|---|---|
-| Resolution / rate | 1280×720 @ 30 fps | The calibration is only valid at 1280×720; the D435 colour sensor tops out at 30 fps there |
-| Streams | Colour only | Depth and IR are unused and cost USB bandwidth |
-| Exposure | Auto, `auto_exposure_priority: false` | With priority on, the camera drops to ~25 Hz in dim light |
-| White balance | Auto | STag uses greyscale; mostly matters to the VLM |
-| Power line frequency | 50 Hz | Avoids flicker from room lights (NZ mains) |
-
-**Open:** fixed short exposure (e.g. 5 ms) would reduce motion blur on a fast-moving cube, at the cost of a
-darker or noisier image. Compare auto and fixed on recordings (`ros2 bag record /camera/camera/color/image_raw`)
-before deciding, and agree it with the teammate.
-
-**Policy rate:** the camera should be at least as fast as the policy. The MASA OpenAI tasks run at 20 Hz
-(`dt` 1/60 × decimation 3), so 30 Hz is enough. The MASA state task runs at 60 Hz (`dt` 1/120 × decimation 2),
-so a new cube pose would arrive only every other step.
-
-### Why not `rs_launch.py`?
-
-Intel's `rs_launch.py` only forwards settings on its own argument list and ignores the rest with a warning.
-`rgb_camera.auto_exposure_priority`, for example, would be silently dropped. `camera.launch.py` starts
-`realsense2_camera_node` directly, so every setting in `camera.yaml` is applied.
-
-## Troubleshooting
-
-| Symptom | Cause / fix |
+| Task | Command |
 |---|---|
-| `bash: ros2: No such file or directory` | You typed `bash ros2 ...`. Drop the `bash`. |
-| `ros2: command not found` | ROS is not sourced in this terminal. Run the source line above. |
-| `The requested device with serial number ... is NOT found` | Wrong serial. The driver's log prints the serial it found. |
-| `Node not found` from `ros2 param` | The driver isn't running. `ros2 param` only works on a running node. |
-| ~25 Hz instead of 30 Hz | `auto_exposure_priority` is on, or the camera is on a USB 2 port. |
-| `symbol lookup error: /snap/core20/...libpthread.so.0` when starting rqt / RViz | Started from the terminal of **snap** VS Code, which passes its library paths to everything it starts. Use Ubuntu's Terminal app (Ctrl+Alt+T), or run `env \| grep -i snap` and `unset` the variables that point into `/snap/`. Installing VS Code from Microsoft's `.deb` fixes it for good. |
-| rqt_image_view shows a grey gradient | No topic selected. Press refresh and pick the image topic. |
+| Start | `ros2 launch cube_perception perception.launch.py` |
+| Start with the debug image | `ros2 launch cube_perception perception.launch.py debug_image:=true` |
+| Use another camera | `ros2 launch cube_perception perception.launch.py serial_no:=123456789012` |
+| Start the camera only | `ros2 launch cube_perception camera.launch.py` |
+| Check the rate (55 to 60 Hz) | `ros2 topic hz /object_tracker/poses` |
+| Measure accuracy | `python3 tools/measure_cube.py` |
+| Correct the tag poses of the cube | `python3 tools/learn_faces.py` |
+| Save test images | `python3 tools/save_frames.py --out ~/frames` |
 
-## Next steps
+The tools need the camera running. Run them in the folder `cube_perception`. Another camera needs its own calibration file: set `intrinsics_path` in `config/perception.yaml`.
 
-See `ROS_NODES_PLAN.md` for the full plan:
+## Camera mode
 
-1. Cube pose node (`tracker_core.py`, `pose_filter.py`, `cube_pose_node.py`) publishing
-   `robot_hand_interfaces/LinkStates` on `/robot_hand/object/states` in the `hand_root` frame.
-2. `perception.launch.py`: camera + cube pose node together.
-3. Build `robot_hand_interfaces` (from `robot-hand-control-stack`) in the same workspace.
-4. Record test bags and tune the filter.
+| Mode | Rate | Notes |
+|---|---|---|
+| 960x540 (default) | 60 Hz | The largest colour image the D435 gives at 60 Hz |
+| 1280x720 | 30 Hz | Less shaking: rotation 0.23° instead of 0.53° in one test with a still cube |
+
+Change `color_profile` in `config/camera.yaml`. Only 16:9 sizes work. The VLM node uses the same images. Agree with the team before you change the mode.
+
+## Problems
+
+| Problem | Fix |
+|---|---|
+| `ros2: command not found` | Run the `source` line above. |
+| The rate is below 60 Hz | Check that the camera is on USB 3. Check the processing time in the log. |
+| The object list is empty | Show the forearm tag to the camera. |
+| `symbol lookup error: /snap/...` | Do not use the terminal of the snap version of VS Code. Use the Ubuntu Terminal. |
+
+# Future TODO list
+
+- Change the camera while running, and combine (fuse) the results from several camera angles.
+- Support more marker types and tracking methods.

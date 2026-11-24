@@ -3,7 +3,7 @@
     ros2 launch cube_perception perception.launch.py
     ros2 launch cube_perception perception.launch.py debug_image:=true
 
-Node parameters: config/cube_pose.yaml.
+Node parameters: config/perception.yaml.
 """
 import os
 
@@ -22,7 +22,7 @@ def generate_launch_description():
     serial_no = DeclareLaunchArgument(
         'serial_no', default_value='826212070191', description='Serial number of the D435 to open')
     debug_image = DeclareLaunchArgument(
-        'debug_image', default_value='false', description='Publish /robot_hand/object/debug_image')
+        'debug_image', default_value='false', description='Publish /object_tracker/debug_image')
 
     camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(share, 'launch', 'camera.launch.py')),
@@ -34,7 +34,7 @@ def generate_launch_description():
         executable='cube_pose_node',
         name='cube_pose_node',
         parameters=[
-            os.path.join(share, 'config', 'cube_pose.yaml'),
+            os.path.join(share, 'config', 'perception.yaml'),
             {'debug_image': ParameterValue(LaunchConfiguration('debug_image'), value_type=bool)},
         ],
         output='screen',

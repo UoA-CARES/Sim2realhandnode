@@ -16,6 +16,7 @@ The frames are saved, so the fit can be re-run without the camera:
 import argparse
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -189,6 +190,18 @@ def refine(frames, tracker):
     return result, rms(res_before), rms(res_after), per_face_rms(res_before), per_face_rms(res_after)
 
 
+def faces_to_text(doc):
+    """JSON text of the face file: one line per vector and matrix row, matrix columns lined up."""
+    def one_line(m):
+        cells = re.split(r",\s+", m[2])
+        if m[1]:  # a vector after its key
+            return ": [" + ", ".join(cells) + "]"
+        cells = [c if c.startswith("-") else " " + c for c in cells]
+        return "[" + " ".join((c + ",").ljust(10) for c in cells[:-1]) + " " + cells[-1] + "]"
+    text = re.sub(r"(: )?\[\s+([^\[\]]+?)\s+\]", one_line, json.dumps(doc, indent=2))
+    return text.replace("\n    },\n", "\n    },\n\n") + "\n"
+
+
 # ---------------------------------------------------------------- main
 
 def main():
@@ -246,13 +259,9 @@ def main():
         entry = doc["faces"][str(m)]
         entry["R_cube_marker"] = np.round(r["R"], 6).tolist()
         entry["t_cube_marker_mm"] = np.round(r["t"], 3).tolist()
-        entry["refined_angle_deg"] = round(r["angle_deg"], 3)
-        entry["refined_offset_mm"] = [round(v, 3) for v in r["offset_mm"]]
-        entry["refined_frames"] = r["frames"]
-    doc.update({"side_mm": args.side_mm, "marker_mm": args.marker_mm, "refined": True,
-                "refined_reprojection_px": round(after, 3)})
+    doc.update({"side_mm": args.side_mm, "marker_mm": args.marker_mm})
     with open(out, "w") as f:
-        json.dump(doc, f, indent=2)
+        f.write(faces_to_text(doc))
     print(f"\nsaved {out}")
 
 

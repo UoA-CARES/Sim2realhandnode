@@ -17,6 +17,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 FACE_NAMES = {6: "top", 1: "bottom", 3: "front", 4: "back", 5: "left", 2: "right"}
+CALIB_SIZE = (1280, 720)   # image size (width, height) of camera_intrinsics.npz
 
 
 def marker_obj_pts(size_mm):
@@ -113,13 +114,16 @@ class Estimate:
 
 
 class CubeTracker:
-    def __init__(self, intrinsics_path, faces_path, side_mm=50.0, marker_mm=40.0,
+    def __init__(self, intrinsics_path, faces_path, side_mm=None, marker_mm=None,
                  hand_marker_id=10, hand_marker_mm=40.0, hd=11, max_fit_error_px=3.0):
         intrinsics = np.load(intrinsics_path)
         self.camera_matrix = intrinsics["camera_matrix"]
         self.dist_coeffs = intrinsics["dist_coeffs"]
         with open(faces_path) as f:
-            faces = json.load(f)["faces"]
+            doc = json.load(f)
+        faces = doc["faces"]
+        side_mm = side_mm or doc.get("side_mm")   # sizes: from the faces file unless given
+        marker_mm = marker_mm or doc["marker_mm"]
         # R_cube_marker: how each marker is turned on its face (exact if refined by learn_faces.py,
         # whole quarter turns if learned by cube_tracker.py --learn).
         # t_cube_marker_mm (refined files only): where its centre is; otherwise the middle of the face.
@@ -134,23 +138,26 @@ class CubeTracker:
         self.hd = hd
         self.max_fit_error_px = max_fit_error_px
         self.corner_model = cube_corner_model(self.learned, self.centres, marker_mm)
+        # {marker_id: size_mm} that detect_markers looks for. Add other objects' tags to find them too.
+        self.marker_sizes = {**{mid: marker_mm for mid in self.learned}, hand_marker_id: hand_marker_mm}
 
     def detect_markers(self, image):
-        """{marker_id: (R_cam_marker, t_cam_marker_mm, image_corners)} for cube faces and the hand marker."""
+        """{marker_id: (R_cam_marker, t_cam_marker_mm, image_corners)} for the tags in marker_sizes.
+        Corners are scaled to CALIB_SIZE, so the calibration fits any 16:9 image."""
         import stag
+        scale = CALIB_SIZE[0] / image.shape[1]
+        if round(image.shape[0] * scale) != CALIB_SIZE[1]:
+            raise ValueError(f"image {image.shape[1]}x{image.shape[0]} does not match calibration {CALIB_SIZE}")
         corners, ids, _ = stag.detectMarkers(image, self.hd)
         found = {}
         if ids is None:
             return found
         for c, mid in zip(corners, np.asarray(ids).flatten()):
             mid = int(mid)
-            if mid in FACE_NAMES:
-                size = self.marker_mm
-            elif mid == self.hand_marker_id:
-                size = self.hand_marker_mm
-            else:
+            size = self.marker_sizes.get(mid)
+            if size is None:
                 continue
-            img_pts = np.asarray(c, dtype=np.float32).reshape(4, 2)
+            img_pts = np.asarray(c, dtype=np.float32).reshape(4, 2) * scale
             sol = solve_marker(img_pts, self.camera_matrix, self.dist_coeffs, size)
             if sol is not None:
                 found[mid] = (sol[0], sol[1], img_pts)

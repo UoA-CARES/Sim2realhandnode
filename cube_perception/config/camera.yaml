@@ -7,18 +7,20 @@
   ros__parameters:
     serial_no: "826212070191"   # this D435 (overridable: serial_no:=... on the launch command)
 
-    # Colour only. Depth and IR are off: nothing uses them, and they cost USB bandwidth.
+    # Colour and depth (also aligned to colour). IR is off: nothing uses it, and it costs USB bandwidth.
     enable_color: true
-    enable_depth: false
+    enable_depth: true
+    align_depth.enable: true
+    depth_module.depth_profile: 848x480x60
     enable_infra1: false
     enable_infra2: false
     enable_gyro: false
     enable_accel: false
 
     rgb_camera:
-      # camera_intrinsics.npz is calibrated at 1280x720 only. Do not change the resolution
-      # without recalibrating. The VLM node resizes its own copy if it wants smaller frames.
-      color_profile: 1280x720x30
+      # camera_intrinsics.npz is calibrated at 1280x720. The tracker scales to other 16:9 sizes
+      # and refuses the rest. 960x540 is the largest size the D435 gives at 60 fps.
+      color_profile: 960x540x60
       color_format: RGB8
 
       # Exposure: auto, but never allowed to lower the frame rate in dim light
@@ -27,7 +29,7 @@
       auto_exposure_priority: false
       # For a fixed exposure instead (steadier, less blur on a moving cube), set
       # enable_auto_exposure: false and tune these together with the teammate:
-      # exposure: 166      # units of 0.1 ms; must stay under 333 for 30 fps
+      # exposure: 100      # units of 0.1 ms; must stay under 166 for 60 fps
       # gain: 64
 
       # White balance: auto. STag works on greyscale so this mainly matters to the VLM.

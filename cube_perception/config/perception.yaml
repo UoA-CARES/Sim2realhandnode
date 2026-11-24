@@ -3,15 +3,15 @@
 cube_pose_node:
   ros__parameters:
     image_topic: /camera/camera/color/image_raw
-    states_topic: /robot_hand/object/states     # robot_hand_interfaces/LinkStates, name ["cube"]
-    status_topic: /robot_hand/object/status     # tracking | predicting | lost | no_hand_marker
+    states_topic: /object_tracker/poses         # vision_msgs/Detection3DArray, one entry per object
+    status_topic: /object_tracker/status        # "<object>: tracking | predicting | lost | no_hand_marker"
 
-    # Empty: the files in this package's config/ (camera_intrinsics.npz is valid at 1280x720 only).
+    # Objects to track. Each one needs config/<name>_faces.json (its tags and their size).
+    objects: [cube]
+
+    # Empty: camera_intrinsics.npz in this package's config/ (calibrated at 1280x720).
     intrinsics_path: ""
-    cube_faces_path: ""
 
-    cube_side_mm: 50.0
-    cube_marker_mm: 40.0
     hand_marker_id: 10          # sticker on the forearm = hand_root (the sim's root link)
     hand_marker_mm: 40.0
     hd_library: 11
@@ -24,18 +24,17 @@ cube_pose_node:
       max_jump_deg: 3.0
       reset_after: 10           # ...unless this many in a row agree (camera bumped): restart the average
 
-    # Cube pose (no velocities: the OpenAI policy doesn't use them).
+    # Cube pose (no velocities).
     filter:
-      max_hold_s: 0.2           # hold the last pose this long when the cube is hidden ("predicting"), then NaN ("lost")
+      max_hold_s: 0.2           # hold the last pose this long when the cube is hidden ("predicting"), then drop it ("lost")
       max_jump_mm: 20.0         # one-frame jump treated as an outlier...
       max_jump_deg: 30.0
       reset_after: 3            # ...unless this many in a row agree (the cube really moved)
-      smoothing: false          # camera jitter (~1 mm, 0.3 deg) is already below the training noise (2 mm)
+      smoothing: false          # camera jitter (~1 mm, 0.3 deg) is already small
       alpha: 0.5                # weight of the new measurement when smoothing is on (1 = none)
 
     frame_id: hand_root
-    cube_name: cube
     publish_tf: true            # <camera optical frame> -> hand_root -> cube, for RViz
-    debug_image: false          # /robot_hand/object/debug_image, half size, axes drawn
+    debug_image: false          # /object_tracker/debug_image, half size, axes drawn
     debug_rate_hz: 5.0
     log_period_s: 5.0           # rate / processing time / latency summary in the log
