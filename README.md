@@ -4,8 +4,12 @@ ROS 2 Jazzy nodes for Eureka sim2real: nodes that bring the real cube's state in
 Isaac Lab (`ard-isaaclab-tasks`) can run on the real MASA hand.
 
 ```
-RealSense D435 ──► camera driver ──► /camera/camera/color/image_raw ──┬──► cube pose node ──► /robot_hand/object/states ──► policy_runner
-(realsense2_camera, Intel's)                                          └──► VLM node =
+RealSense D435 ──► camera driver ──┬──► /camera/camera/color/image_raw ──► cube pose node ──► /robot_hand/object/states ──► policy_runner
+(realsense2_camera, Intel's)       │                                                                                          ┆
+                                   ├──► /camera/camera/color/image_raw/compressed ──┐                                         ┆ ~/start_recording
+                                   │                                                ├──► recorder node ◄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘ (srv, planned)
+                                   └──► /camera/camera/color/camera_info ───────────┘         │
+                                                                                              └──► <tag>/logs/rl_games/play/videos/real/
 ```
 
 | Part | Status |
@@ -26,6 +30,16 @@ cube_perception/                 ament_python package
 ├── launch/
 │   └── camera.launch.py         starts the D435 with camera.yaml
 └── cube_perception/             Python code (cube pose node goes here)
+hand_interfaces/                 ament_cmake package (custom message request for running the recorder node from the jetson)
+└── srv/StartRecording.srv
+hand_recorder/                   ament_python package (runs on the PC)
+├── package.xml
+├── setup.py, setup.cfg
+├── config/recorder.yaml         topics, transport, duration, watchdog
+├── launch/recorder.launch.py
+└── hand_recorder/
+    └── recorder_node.py
+
 ```
 
 ## Requirements
@@ -48,12 +62,12 @@ conda config --set auto_activate_base false
 
 Activate `env_isaaclab` only in terminals where you train. Never in ROS terminals.
 
-### 2. Install ROS 2 Jazzy and the RealSense driver
+### 2. Install ROS 2 Jazzy, RealSense driver, and image transport plugins
 
 Follow <https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html> (`ros-jazzy-desktop` + `ros-dev-tools`), then:
 
 ```bash
-sudo apt install ros-jazzy-realsense2-camera ros-jazzy-rqt-image-view
+sudo apt install ros-jazzy-realsense2-camera ros-jazzy-rqt-image-view ros-jazzy-image-transport-plugins
 ```
 
 ### 3. Python packages
@@ -189,13 +203,3 @@ Intel's `rs_launch.py` only forwards settings on its own argument list and ignor
 | ~25 Hz instead of 30 Hz | `auto_exposure_priority` is on, or the camera is on a USB 2 port. |
 | `symbol lookup error: /snap/core20/...libpthread.so.0` when starting rqt / RViz | Started from the terminal of **snap** VS Code, which passes its library paths to everything it starts. Use Ubuntu's Terminal app (Ctrl+Alt+T), or run `env \| grep -i snap` and `unset` the variables that point into `/snap/`. Installing VS Code from Microsoft's `.deb` fixes it for good. |
 | rqt_image_view shows a grey gradient | No topic selected. Press refresh and pick the image topic. |
-
-## Next steps
-
-See `ROS_NODES_PLAN.md` for the full plan:
-
-1. Cube pose node (`tracker_core.py`, `pose_filter.py`, `cube_pose_node.py`) publishing
-   `robot_hand_interfaces/LinkStates` on `/robot_hand/object/states` in the `hand_root` frame.
-2. `perception.launch.py`: camera + cube pose node together.
-3. Build `robot_hand_interfaces` (from `robot-hand-control-stack`) in the same workspace.
-4. Record test bags and tune the filter.
