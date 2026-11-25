@@ -2,3 +2,6 @@ hand_recorder:
   ros__parameters:
     image_topic: '/camera/camera/color/image_raw'
     log_every_n: 30
+    output_path: '~/hand_recorder_test/test.mp4'
+    fps: 30.0
+    duration_sec: 10.0
