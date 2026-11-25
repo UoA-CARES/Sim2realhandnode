@@ -1,0 +1,61 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid (10 cm)
+      Cell Size: 0.1
+      Plane Cell Count: 10
+      Enabled: true
+      Value: true
+    - Class: rviz_default_plugins/Axes
+      Name: hand_root (x red, y green, z blue)
+      Reference Frame: <Fixed Frame>
+      Length: 0.05
+      Radius: 0.002
+      Enabled: true
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: RGBD points
+      Topic:
+        Value: /object_tracker/points
+        Depth: 1
+        Reliability Policy: Best Effort
+      Color Transformer: RGB8
+      Position Transformer: XYZ
+      Style: Flat Squares
+      Size (m): 0.0015
+      Alpha: 0.5
+      Enabled: true
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Object poses
+      Topic:
+        Value: /object_tracker/markers
+        Depth: 1
+      Enabled: true
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 30; 30; 30
+    Fixed Frame: hand_root
+    Frame Rate: 60
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 0.6
+      Focal Point:
+        X: 0
+        Y: 0.08
+        Z: 0
+      Pitch: 0.8
+      Yaw: -1.57
+Window Geometry:
+  Width: 1400
+  Height: 900

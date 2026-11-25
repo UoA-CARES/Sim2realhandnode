@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'cube_pose_node = cube_perception.cube_pose_node:main',
+            'global_view_node = cube_perception.global_view_node:main',
         ],
     },
 )

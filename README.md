@@ -16,17 +16,20 @@ This is a computer vision node for ROS 2 Jazzy. It finds the position and orient
 cube_perception/                ROS package
 ├── launch/
 │   ├── camera.launch.py        camera only
-│   └── perception.launch.py    camera + cube pose node
+│   ├── perception.launch.py    camera + cube pose node
+│   └── global_view.launch.py   RGBD points and object poses in RViz
 ├── config/
 │   ├── camera.yaml             camera settings
 │   ├── camera_intrinsics.npz   calibration of camera 826212070191, at 1280x720
 │   ├── perception.yaml         node settings, and the list of objects
+│   ├── global_view.rviz        RViz settings of the global view
 │   └── cube_faces.json         cube, 6 tags
 ├── cube_perception/
 │   ├── image_utils.py          ROS image -> numpy image
 │   ├── tracker_core.py         image -> tag corners -> pose of an object
 │   ├── pose_filter.py          removes jumps, holds the pose while an object is hidden
-│   └── cube_pose_node.py       ROS node: joins the files above
+│   ├── cube_pose_node.py       ROS node: joins the files above
+│   └── global_view_node.py     ROS node: RGBD images -> points in hand_root, with object axes
 └── tools/                      save_frames, measure_cube, learn_faces, compare_with_cube_tracker
 ```
 
@@ -79,6 +82,8 @@ To add an object:
 | `/camera/camera/color/camera_info` | `sensor_msgs/CameraInfo` | Factory calibration. The tracker uses `camera_intrinsics.npz` instead. |
 | `/camera/camera/aligned_depth_to_color/image_raw` | `sensor_msgs/Image` | Depth image (D), matched to the colour pixels |
 | `/object_tracker/debug_image` | `sensor_msgs/Image` | Image with axes drawn. Off by default. |
+| `/object_tracker/points` | `sensor_msgs/PointCloud2` | Coloured points in `hand_root`. Only with the global view. |
+| `/object_tracker/markers` | `visualization_msgs/MarkerArray` | Object axes and names for RViz. Only with the global view. |
 | `/tf` | `tf2_msgs/TFMessage` | `camera_color_optical_frame -> hand_root -> <object>` |
 
 How to read the object list:
@@ -120,12 +125,12 @@ You need:
    ~/ros2_venv/bin/pip install stag-python "numpy<2"
    ```
 
-4. Build. Start in the folder of this repo.
+4. Build. Start in the folder of this repo. Use the Python of `~/ros2_venv`, as below. With plain `colcon`, the node cannot find `stag`.
 
    ```bash
    mkdir -p ~/ros2_ws/src && ln -s "$PWD/cube_perception" ~/ros2_ws/src/
    source /opt/ros/jazzy/setup.bash
-   cd ~/ros2_ws && colcon build --symlink-install --packages-select cube_perception
+   cd ~/ros2_ws && ~/ros2_venv/bin/python3 -m colcon build --symlink-install --packages-select cube_perception
    ```
 
 # How to use it
@@ -140,6 +145,7 @@ source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && sourc
 |---|---|
 | Start | `ros2 launch cube_perception perception.launch.py` |
 | Start with the debug image | `ros2 launch cube_perception perception.launch.py debug_image:=true` |
+| Show the RGBD points and the object poses in `hand_root` (second terminal) | `ros2 launch cube_perception global_view.launch.py` |
 | Use another camera | `ros2 launch cube_perception perception.launch.py serial_no:=123456789012` |
 | Start the camera only | `ros2 launch cube_perception camera.launch.py` |
 | Check the rate (55 to 60 Hz) | `ros2 topic hz /object_tracker/poses` |
@@ -163,8 +169,10 @@ Change `color_profile` in `config/camera.yaml`. Only 16:9 sizes work. The VLM no
 | Problem | Fix |
 |---|---|
 | `ros2: command not found` | Run the `source` line above. |
+| `No module named 'stag'` | Build again with the command in installation step 4. |
 | The rate is below 60 Hz | Check that the camera is on USB 3. Check the processing time in the log. |
 | The object list is empty | Show the forearm tag to the camera. |
+| The global view is empty | Read the warning of `global_view_node`. If depth stopped, start `perception.launch.py` again. |
 | `symbol lookup error: /snap/...` | Do not use the terminal of the snap version of VS Code. Use the Ubuntu Terminal. |
 
 # Future TODO list

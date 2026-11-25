@@ -147,6 +147,17 @@ ros2 launch cube_perception perception.launch.py debug_image:=true
 ros2 run rqt_image_view rqt_image_view /object_tracker/debug_image
 ```
 
+## Global view
+
+`global_view.launch.py` starts `global_view_node` and RViz. The node reads the colour image, the depth image, `camera_info`, `/object_tracker/poses` and `/tf`. It uses only messages with exactly the same time stamp. The topic names can be changed with its parameters.
+
+| Topic | Type | Content |
+|---|---|---|
+| `/object_tracker/points` | `sensor_msgs/msg/PointCloud2` | Every 2nd pixel in each direction, in `hand_root`, metres, with colour. Parameters: `stride`, `max_depth_m`. |
+| `/object_tracker/markers` | `visualization_msgs/msg/MarkerArray` | Axes at the object centre (x red, y green, z blue, 5 cm long) and one name with the position for each object |
+
+QoS: reliable, volatile, depth 1.
+
 ## Camera topics
 
 These come from the RealSense driver.
