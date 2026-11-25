@@ -39,14 +39,15 @@ Intel camera driver ──► tag detector ──► object pose ──► filte
 
 ## How an object is described
 
-Each object has one file. The file lists the tags on the object. Each tag has an ID and its pose on the object. All tags of one object have the same size.
+Each object has one file. The file lists the tags on the object. Each tag has a name, an ID, a size and its pose on the object. The tags of one object can have different sizes.
 
 ```
 config/cube_faces.json (one tag shown, shortened)
 {
-  "marker_mm": 40.0,
   "faces": {
-    "6": {
+    "top": {
+      "id": 6,
+      "marker_mm": 40.0,
       "R_cube_marker": [[0.000585, 1.0, 0.0], [-1.0, 0.000585, 0.0], [0.0, 0.0, 1.0]],
       "t_cube_marker_mm": [0.043, 0.145, 25.0]
     }
@@ -54,7 +55,7 @@ config/cube_faces.json (one tag shown, shortened)
 }
 ```
 
-`R_cube_marker` is the tag rotation (3x3 matrix). `t_cube_marker_mm` is the tag centre. Both are relative to the object centre.
+`id` is the number the detector reads from the tag. `marker_mm` is the side of the black square of the tag. `R_cube_marker` is the tag rotation (3x3 matrix). `t_cube_marker_mm` is the tag centre. The rotation and the centre are relative to the object centre.
 
 To add an object:
 
@@ -89,6 +90,8 @@ How to read the object list:
 | `detections[i].results[0].hypothesis.score` | 1.0: seen in this image. 0.5: not seen now, last pose held for a short time. |
 
 A lost object is not in the list. If the forearm tag was never seen, the list is empty.
+
+Full details (layout, message content, example code): [docs/publishing.md](docs/publishing.md).
 
 # Installation
 

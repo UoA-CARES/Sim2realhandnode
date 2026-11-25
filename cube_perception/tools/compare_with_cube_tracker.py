@@ -72,11 +72,11 @@ def main():
     camera_matrix, dist_coeffs = intr["camera_matrix"], intr["dist_coeffs"]
     import json
     with open(args.faces) as f:
-        learned = {int(k): np.array(v["R_cube_marker"], dtype=float) for k, v in json.load(f)["faces"].items()}
+        learned = {int(v["id"]): np.array(v["R_cube_marker"], dtype=float) for v in json.load(f)["faces"].values()}
     corner_model = ct.cube_corner_model(learned)
 
     # No fit-error rejection here: compare the raw numbers.
-    tracker = CubeTracker(args.intrinsics, args.faces, side_mm=ct.SIDE_MM, marker_mm=ct.MARKER_MM,
+    tracker = CubeTracker(args.intrinsics, args.faces,
                           hand_marker_id=ct.HAND_MARKER_ID, hand_marker_mm=ct.HAND_MARKER_MM, hd=ct.HD,
                           max_fit_error_px=float("inf"))
 

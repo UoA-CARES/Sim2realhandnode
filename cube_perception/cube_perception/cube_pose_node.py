@@ -16,6 +16,7 @@ Publishes
   /object_tracker/status           std_msgs/String   <object>: tracking | predicting | lost | no_hand_marker
   /tf  (publish_tf)                <camera optical frame> -> hand_root -> cube
   /object_tracker/debug_image      (debug_image) image with the axes drawn, at debug_rate_hz
+Details: docs/publishing.md
 """
 import os
 import time

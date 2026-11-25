@@ -16,7 +16,6 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-FACE_NAMES = {6: "top", 1: "bottom", 3: "front", 4: "back", 5: "left", 2: "right"}
 CALIB_SIZE = (1280, 720)   # image size (width, height) of camera_intrinsics.npz
 
 
@@ -40,11 +39,6 @@ def solve_marker(img_pts, camera_matrix, dist_coeffs, size_mm):
     return cv2.Rodrigues(rvec)[0], tvec.flatten()
 
 
-def default_marker_centre(R_cube_marker, side_mm):
-    """Marker centre in the cube frame (mm) when it sits exactly in the middle of its face."""
-    return R_cube_marker[:, 2] * side_mm / 2.0
-
-
 def cube_pose_from_face(R_cam_marker, t_cam_marker, R_cube_marker, t_cube_marker):
     """Cube pose from one face marker. R/t_cube_marker: the marker's pose in the cube frame."""
     R_cam_cube = R_cam_marker @ R_cube_marker.T
@@ -52,10 +46,10 @@ def cube_pose_from_face(R_cam_marker, t_cam_marker, R_cube_marker, t_cube_marker
     return R_cam_cube, center
 
 
-def cube_corner_model(learned, centres, marker_mm):
+def cube_corner_model(learned, centres, sizes):
     """{marker_id: 4x3 marker corner positions in the cube frame (mm)}.
-    learned: {id: R_cube_marker}; centres: {id: marker centre in the cube frame (mm)}."""
-    return {mid: (Rcm @ marker_obj_pts(marker_mm).T).T + centres[mid] for mid, Rcm in learned.items()}
+    learned: {id: R_cube_marker}; centres: {id: marker centre in the cube frame (mm)}; sizes: {id: mm}."""
+    return {mid: (Rcm @ marker_obj_pts(sizes[mid]).T).T + centres[mid] for mid, Rcm in learned.items()}
 
 
 def solve_cube_jointly(faces, corner_model, R_init, t_init, camera_matrix, dist_coeffs):
@@ -114,32 +108,29 @@ class Estimate:
 
 
 class CubeTracker:
-    def __init__(self, intrinsics_path, faces_path, side_mm=None, marker_mm=None,
+    def __init__(self, intrinsics_path, faces_path,
                  hand_marker_id=10, hand_marker_mm=40.0, hd=11, max_fit_error_px=3.0):
         intrinsics = np.load(intrinsics_path)
         self.camera_matrix = intrinsics["camera_matrix"]
         self.dist_coeffs = intrinsics["dist_coeffs"]
         with open(faces_path) as f:
             doc = json.load(f)
-        faces = doc["faces"]
-        side_mm = side_mm or doc.get("side_mm")   # sizes: from the faces file unless given
-        marker_mm = marker_mm or doc["marker_mm"]
+        self.names = {int(v["id"]): name for name, v in doc["faces"].items()}
+        if len(self.names) != len(doc["faces"]):
+            raise ValueError(f"a tag ID is used twice in {faces_path}")
+        faces = {int(v["id"]): v for v in doc["faces"].values()}
         # R_cube_marker: how each marker is turned on its face (exact if refined by learn_faces.py,
         # whole quarter turns if learned by cube_tracker.py --learn).
-        # t_cube_marker_mm (refined files only): where its centre is; otherwise the middle of the face.
-        self.learned = {int(k): np.array(v["R_cube_marker"], dtype=float) for k, v in faces.items()}
-        self.centres = {int(k): (np.array(v["t_cube_marker_mm"], dtype=float) if "t_cube_marker_mm" in v
-                                 else default_marker_centre(self.learned[int(k)], side_mm))
-                        for k, v in faces.items()}
-        self.side_mm = side_mm
-        self.marker_mm = marker_mm
+        # t_cube_marker_mm: where its centre is. marker_mm: the side of its black square.
+        self.learned = {k: np.array(v["R_cube_marker"], dtype=float) for k, v in faces.items()}
+        self.centres = {k: np.array(v["t_cube_marker_mm"], dtype=float) for k, v in faces.items()}
         self.hand_marker_id = hand_marker_id
         self.hand_marker_mm = hand_marker_mm
         self.hd = hd
         self.max_fit_error_px = max_fit_error_px
-        self.corner_model = cube_corner_model(self.learned, self.centres, marker_mm)
         # {marker_id: size_mm} that detect_markers looks for. Add other objects' tags to find them too.
-        self.marker_sizes = {**{mid: marker_mm for mid in self.learned}, hand_marker_id: hand_marker_mm}
+        self.marker_sizes = {**{k: v["marker_mm"] for k, v in faces.items()}, hand_marker_id: hand_marker_mm}
+        self.corner_model = cube_corner_model(self.learned, self.centres, self.marker_sizes)
 
     def detect_markers(self, image):
         """{marker_id: (R_cam_marker, t_cam_marker_mm, image_corners)} for the tags in marker_sizes.

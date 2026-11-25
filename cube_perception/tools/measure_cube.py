@@ -136,16 +136,13 @@ def main():
     parser.add_argument("--timeout", type=float, default=15.0, help="seconds to wait for enough good frames")
     parser.add_argument("--intrinsics", default=os.path.join(PKG_DIR, "config", "camera_intrinsics.npz"))
     parser.add_argument("--faces", default=os.path.join(PKG_DIR, "config", "cube_faces.json"))
-    parser.add_argument("--side-mm", type=float, default=50.0, help="cube side")
-    parser.add_argument("--marker-mm", type=float, default=40.0, help="black square of the cube face markers")
     parser.add_argument("--hand-marker-mm", type=float, default=40.0, help="black square of hand marker 10")
     parser.add_argument("--out", help="append each measurement to this CSV file")
     parser.add_argument("--raw-hand", action="store_true",
                         help="use marker 10's pose from each frame instead of the running average")
     args = parser.parse_args()
 
-    tracker = CubeTracker(args.intrinsics, args.faces, side_mm=args.side_mm, marker_mm=args.marker_mm,
-                          hand_marker_mm=args.hand_marker_mm)
+    tracker = CubeTracker(args.intrinsics, args.faces, hand_marker_mm=args.hand_marker_mm)
     rclpy.init()
     node = Collector(args.topic, tracker, raw_hand=args.raw_hand)
     spinner = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)

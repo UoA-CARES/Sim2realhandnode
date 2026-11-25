@@ -8,10 +8,10 @@ whole cube's computed orientation whenever that face is in view. This tool measu
 by fitting all of them at once to many frames that show two or three faces (a bundle adjustment).
 
 Needs the camera driver running and ROS sourced:
-    python3 tools/learn_faces.py --side-mm 50
+    python3 tools/learn_faces.py
 Turn the cube slowly in front of the camera, edge-on so 2-3 faces are visible, until every face is done.
 The frames are saved, so the fit can be re-run without the camera:
-    python3 tools/learn_faces.py --data ~/cube_learn_data.json --side-mm 50
+    python3 tools/learn_faces.py --data ~/cube_learn_data.json
 """
 import argparse
 import json
@@ -30,7 +30,7 @@ from scipy.spatial.transform import Rotation as R
 
 PKG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PKG_DIR)
-from cube_perception.tracker_core import FACE_NAMES, CubeTracker, marker_obj_pts  # noqa: E402
+from cube_perception.tracker_core import CubeTracker, marker_obj_pts  # noqa: E402
 
 
 # ---------------------------------------------------------------- collection (ROS)
@@ -92,9 +92,9 @@ def collect(args, tracker):
     try:
         while not done.wait(0.5):
             status = "  ".join(
-                f"{FACE_NAMES[m]}:{min(seen[m], args.per_face)}/{args.per_face}"
+                f"{tracker.names[m]}:{min(seen[m], args.per_face)}/{args.per_face}"
                 + ("✓" if seen[m] >= args.per_face else "")
-                for m in sorted(tracker.learned, key=lambda m: FACE_NAMES[m]))
+                for m in sorted(tracker.learned, key=lambda m: tracker.names[m]))
             print(f"\r  {len(frames):4d} frames   {status}   ", end="", flush=True)
     except KeyboardInterrupt:
         pass
@@ -113,12 +113,12 @@ def rz(theta):
 
 def refine(frames, tracker):
     """Bundle adjustment: per frame the cube pose (6), per face the sticker's extra angle about its
-    normal and its in-plane offset (3). Sticker sizes, the cube size and the faces' directions are fixed."""
+    normal and its in-plane offset (3). Sticker sizes and the faces' directions are fixed."""
     face_ids = sorted({m for f in frames for m in f["ids"]})
     fi = {m: i for i, m in enumerate(face_ids)}
     R0 = {m: tracker.learned[m] for m in face_ids}
     t0 = {m: tracker.centres[m] for m in face_ids}
-    P = marker_obj_pts(tracker.marker_mm).astype(np.float64)
+    P = {m: marker_obj_pts(tracker.marker_sizes[m]).astype(np.float64) for m in face_ids}
     K, D = tracker.camera_matrix, tracker.dist_coeffs
     nf, nm = len(frames), len(face_ids)
 
@@ -126,7 +126,7 @@ def refine(frames, tracker):
         theta, u, v = p_face
         Rm = R0[m] @ rz(theta)
         t = t0[m] + R0[m] @ np.array([u, v, 0.0])
-        return (Rm @ P.T).T + t
+        return (Rm @ P[m].T).T + t
 
     def residuals(p):
         pf = p[:6 * nf].reshape(nf, 6)
@@ -211,8 +211,6 @@ def main():
     parser.add_argument("--faces", default=os.path.join(PKG_DIR, "config", "cube_faces.json"),
                         help="current face file (which face is which; refined values are improved further)")
     parser.add_argument("--out", help="where to write the result (default: overwrite --faces)")
-    parser.add_argument("--side-mm", type=float, default=50.0, help="cube side")
-    parser.add_argument("--marker-mm", type=float, default=40.0, help="black square of the face markers")
     parser.add_argument("--data", help="re-use saved frames instead of the camera")
     parser.add_argument("--save", default=os.path.expanduser("~/cube_learn_data.json"), help="save frames here")
     parser.add_argument("--per-face", type=int, default=40, help="frames needed per face")
@@ -222,8 +220,7 @@ def main():
     args = parser.parse_args()
     out = args.out or args.faces
 
-    tracker = CubeTracker(args.intrinsics, args.faces, side_mm=args.side_mm, marker_mm=args.marker_mm,
-                          max_fit_error_px=5.0)
+    tracker = CubeTracker(args.intrinsics, args.faces, max_fit_error_px=5.0)
     if args.data:
         with open(args.data) as f:
             frames = json.load(f)["frames"]
@@ -231,7 +228,7 @@ def main():
     else:
         frames = collect(args, tracker)
         with open(args.save, "w") as f:
-            json.dump({"frames": frames, "side_mm": args.side_mm}, f)
+            json.dump({"frames": frames}, f)
         print(f"saved {len(frames)} frames to {args.save}")
     if len(frames) < 20:
         raise SystemExit("Not enough frames with 2+ faces to fit. Try again, turning the cube slower.")
@@ -244,22 +241,21 @@ def main():
     print(f"reprojection error, all frames: {before:.2f} px -> {after:.2f} px\n")
     print(f"  {'face':8s} {'ID':>3s} {'frames':>6s}  {'sticker turned':>14s}  {'sticker off-centre (mm)':>24s}"
           f"  {'error px before -> after':>24s}")
-    for m in sorted(result, key=lambda m: FACE_NAMES[m]):
+    for m in sorted(result, key=lambda m: tracker.names[m]):
         r = result[m]
-        print(f"  {FACE_NAMES[m]:8s} {m:3d} {r['frames']:6d}  {r['angle_deg']:+12.2f}°  "
+        print(f"  {tracker.names[m]:8s} {m:3d} {r['frames']:6d}  {r['angle_deg']:+12.2f}°  "
               f"({r['offset_mm'][0]:+6.2f}, {r['offset_mm'][1]:+6.2f}){'':10s}"
               f"  {face_before[m]:10.2f} -> {face_after[m]:.2f}")
-    missing = [FACE_NAMES[m] for m in tracker.learned if m not in result]
+    missing = [tracker.names[m] for m in tracker.learned if m not in result]
     if missing:
         print(f"\n  not seen with another face, left unchanged: {', '.join(missing)}")
 
     with open(args.faces) as f:
         doc = json.load(f)
     for m, r in result.items():
-        entry = doc["faces"][str(m)]
+        entry = doc["faces"][tracker.names[m]]
         entry["R_cube_marker"] = np.round(r["R"], 6).tolist()
         entry["t_cube_marker_mm"] = np.round(r["t"], 3).tolist()
-    doc.update({"side_mm": args.side_mm, "marker_mm": args.marker_mm})
     with open(out, "w") as f:
         f.write(faces_to_text(doc))
     print(f"\nsaved {out}")
