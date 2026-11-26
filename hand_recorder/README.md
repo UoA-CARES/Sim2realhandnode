@@ -1,7 +1,12 @@
 # CLI Commands
 All CLI commands assume <package_name>:=hand_recorder and <node_name>:=recorder_node
 
-## General Running
+## Running
+```
+ros2 launch hand_recorder recorder.launch.py
+```
+
+## Testing 
 ```
 # Run burger image publisher
 ros2 run image_tools cam2image --ros-args -p burger_mode:=true
